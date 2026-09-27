@@ -1,0 +1,101 @@
+/*
+ * =====================================================================
+ * Task 3: Voice Control & Relays via Adafruit IO MQTT
+ * Developer: PRAVEEN. A
+ * Board: ESP32 DevKit V1
+ * Voice Engine: Google Assistant via Adafruit IO Cloud Feeds
+ * =====================================================================
+ */
+
+#include <WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+
+// ---------- WiFi Credentials ----------
+#define WIFI_SSID       "protosem"
+#define WIFI_PASSWORD   "Proto#123"
+
+// ---------- Adafruit IO Credentials ----------
+#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVERPORT  1883
+#define AIO_USERNAME    "elaks_22"
+#define AIO_KEY         "aio_Hdzy40ALTmyX6Pqhtzw8Qg1fUMiV"
+
+// ---------- Relay Pin Assignments ----------
+#define RELAY_PIN_1     23   // Main Bulb Relay
+#define RELAY_PIN_2     22   // Aux Relay Channel
+
+WiFiClient client;
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+
+// Adafruit IO Feed for Voice Control
+Adafruit_MQTT_Subscribe voiceBulb = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/bulb");
+
+void MQTT_connect();
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize Relays (Active LOW: HIGH = OFF, LOW = ON)
+  pinMode(RELAY_PIN_1, OUTPUT);
+  pinMode(RELAY_PIN_2, OUTPUT);
+  digitalWrite(RELAY_PIN_1, HIGH);
+  digitalWrite(RELAY_PIN_2, HIGH);
+
+  // Connect to WiFi
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected successfully!");
+  Serial.println(WiFi.localIP());
+
+  // Subscribe to voice control feed
+  mqtt.subscribe(&voiceBulb);
+}
+
+void loop() {
+  MQTT_connect();
+
+  Adafruit_MQTT_Subscribe *subscription;
+  while ((subscription = mqtt.readSubscription(1000))) {
+    if (subscription == &voiceBulb) {
+      String value = (char *)voiceBulb.lastread;
+      value.trim();
+      value.toUpperCase();
+
+      Serial.print("[VOICE COMMAND RECEIVED]: ");
+      Serial.println(value);
+
+      if (value == "ON" || value == "1") {
+        digitalWrite(RELAY_PIN_1, LOW); // Turn Relay ON
+        Serial.println("[ACTION] Relay 1 Energized -> Light ON");
+      }
+      else if (value == "OFF" || value == "0") {
+        digitalWrite(RELAY_PIN_1, HIGH); // Turn Relay OFF
+        Serial.println("[ACTION] Relay 1 Released -> Light OFF");
+      }
+    }
+  }
+
+  if (!mqtt.ping()) {
+    mqtt.disconnect();
+  }
+}
+
+void MQTT_connect() {
+  int8_t ret;
+  if (mqtt.connected()) return;
+
+  Serial.print("Connecting to Adafruit IO... ");
+  while ((ret = mqtt.connect()) != 0) {
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Re-attempting connection in 4s...");
+    mqtt.disconnect();
+    delay(4000);
+  }
+  Serial.println("Voice MQTT Channel Ready!");
+}
